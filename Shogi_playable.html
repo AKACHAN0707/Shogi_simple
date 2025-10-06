@@ -339,6 +339,104 @@ document.addEventListener('click', (e)=>{
 // initialize
 initBoard();
 
+// --- AI対戦ロジック ---
+function aiMove() {
+  if (turn !== 'g') return; // AIは後手
+
+  const allMoves = [];
+
+  // 1. 盤上の駒の合法手を集める
+  for (let r = 0; r < 9; r++) {
+    for (let c = 0; c < 9; c++) {
+      const piece = board[r][c];
+      if (piece && piece.owner === 'g') {
+        const moves = getLegalMoves(r, c, piece);
+        for (const m of moves) {
+          allMoves.push({ from: { r, c }, to: m, hand: false });
+        }
+      }
+    }
+  }
+
+  // 2. 打ち駒の合法手を集める
+  for (const t of Object.keys(hands.g)) {
+    const count = hands.g[t];
+    if (count > 0) {
+      for (let r = 0; r < 9; r++) {
+        for (let c = 0; c < 9; c++) {
+          if (!board[r][c]) {
+            // dropチェックは人間の処理と同じく簡略化
+            if (t === 'P') {
+              let sameFilePawn = false;
+              for (let rr = 0; rr < 9; rr++) {
+                const p = board[rr][c];
+                if (p && p.type === 'P' && p.owner === 'g') sameFilePawn = true;
+              }
+              if (sameFilePawn || r === 8) continue;
+            }
+            if (t === 'N' && r >= 7) continue;
+            if (t === 'L' && r === 8) continue;
+            allMoves.push({ hand: true, type: t, to: { r, c } });
+          }
+        }
+      }
+    }
+  }
+
+  if (allMoves.length === 0) {
+    alert("後手(○) の指し手がありません。先手(●) の勝ち！");
+    return;
+  }
+
+  // 3. ランダムに手を選択
+  const move = allMoves[Math.floor(Math.random() * allMoves.length)];
+
+  // 4. 実際に指す
+  if (move.hand) {
+    // 打ち駒
+    board[move.to.r][move.to.c] = { type: move.type, owner: 'g' };
+    hands.g[move.type]--;
+    if (hands.g[move.type] === 0) delete hands.g[move.type];
+  } else {
+    // 通常の移動
+    const from = move.from;
+    const piece = board[from.r][from.c];
+    const dest = board[move.to.r][move.to.c];
+    if (dest) {
+      const capturedType = dest.promoted ? demote(dest.type) : dest.type;
+      hands.g[capturedType] = (hands.g[capturedType] || 0) + 1;
+    }
+    board[move.to.r][move.to.c] = piece;
+    board[from.r][from.c] = null;
+    // 成りはランダムで決定
+    if (canPromote(piece.type)) {
+      const promotionZone = [6, 7, 8];
+      if (promotionZone.includes(from.r) || promotionZone.includes(move.to.r)) {
+        if (Math.random() < 0.5) {
+          piece.promoted = true;
+        }
+      }
+    }
+    if (dest && dest.type === 'K') {
+      alert("後手(○) の勝ち！ 王を取った。");
+    }
+  }
+
+  toggleTurn();
+  updateUI();
+}
+
+// --- 手番交代時にAIを呼ぶ ---
+const origToggleTurn = toggleTurn;
+toggleTurn = function () {
+  turn = (turn === 's') ? 'g' : 's';
+  updateUI();
+  if (turn === 'g') {
+    setTimeout(aiMove, 500); // 少し待ってから指す
+  }
+};
+
+
 </script>
 </body>
 </html>
